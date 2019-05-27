@@ -2,11 +2,11 @@ use std::thread;
 extern crate num_cpus;
 extern crate rand;
 use rand::Rng;
+use std::ops::{Deref, DerefMut};
 use std::sync::mpsc::channel;
 use std::sync::{Arc, Mutex};
 
 fn main() {
-
     let show = String::from("Linux on ice");
     let ticket = Ticket {
         price: 180,
@@ -20,49 +20,59 @@ fn main() {
         name: String::from("Edda Kino"),
     };
 
-    let data = Arc::new(Mutex::new(box_office));
-    let (tx, rx) = channel();
+    loop {
+        let (tx, rx) = channel();
+        let data = Arc::new(Mutex::new(box_office.clone()));
 
-    let number_of_physical_cores = num_cpus::get();
-    let mut children = vec![];
-    for _i in 0..number_of_physical_cores {
-        let (data, tx) = (Arc::clone(&data), tx.clone());
+        let number_of_physical_cores = num_cpus::get();
+        let mut children = vec![];
+        for _i in 0..number_of_physical_cores {
+            let (data, tx) = (Arc::clone(&data), tx.clone());
 
-        children.push(thread::spawn(move || {
-            let amount = rand::thread_rng().gen_range(0, 9);
-            let mut data = data.lock().unwrap();
-            ticket_sales(&mut *data, 0, amount);
-            tx.send(data).unwrap();
-        }));
-    let box_office = rx.recv().unwrap();
-    box_office_status(*box_office);
-    }
-    for child in children {
-        let _ = child.join();
+            children.push(thread::spawn(move || {
+                let amount = rand::thread_rng().gen_range(0, 9);
+                let mut data = data.lock().unwrap();
+                ticket_sales(data.deref_mut(), 0, amount);
+                tx.send(data.deref().clone()).expect("Something went bad");
+            }));
+        }
+        for child in children {
+            let _ = child.join();
+        }
+
+        box_office = rx.recv().unwrap();
+        if box_office_status(&box_office) <= 0 {
+            break;
+        }
     }
 }
-
+#[derive(Clone)]
 struct BoxOffice {
     tickets: Vec<Ticket>,
     account: i32,
     name: String,
 }
-
+#[derive(Clone)]
 struct Ticket {
-    price: u32,
-    number: u32,
+    price: i32,
+    number: i32,
     show: String,
 }
 
-fn ticket_sales(mut box_office: &mut BoxOffice, ticket_id: usize, amount: u32) -> &mut BoxOffice {
+fn ticket_sales(mut box_office: &mut BoxOffice, ticket_id: usize, amount: i32) {
     let mut ticket = &mut box_office.tickets[ticket_id];
-    if ticket.number - amount >= 0 {
-        box_office.account = box_office.account + ticket.price as i32;
+    if (ticket.number - amount) > 0 {
+        box_office.account = box_office.account + (ticket.price * amount) as i32;
         ticket.number = ticket.number - amount;
     }
-    box_office
+    else{
+        println!("Sorry, we do not have this many tickets in stock");
+        println!("You can have {} tickets", ticket.number);
+        box_office.account = box_office.account + (ticket.price * ticket.number) as i32;
+        ticket.number = 0;
+    }
 }
-fn box_office_status(box_office: BoxOffice) -> i32 {
+fn box_office_status(box_office: &BoxOffice) -> i32 {
     let mut tickets: i32 = 0;
     let len = box_office.tickets.len();
     if len > 0 {
