@@ -45,11 +45,7 @@ fn box_office_status(box_office: &BoxOffice) -> i32 {
         "{} has {} tickets for sale and {} kr in account",
         box_office.name, tickets, box_office.account
     );
-    if tickets > 0 {
         tickets
-    } else {
-        0
-    }
 }
 fn multi_buy(mut box_office: BoxOffice) -> BoxOffice
 {
